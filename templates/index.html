@@ -3,99 +3,180 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Importador de Calendarios</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; background: #f5f6f8; color: #202124; }
-    .wrap { max-width: 980px; margin: 40px auto; padding: 0 18px; }
-    .card { background: white; border-radius: 14px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
-    h1 { margin-top: 0; font-size: 28px; }
-    label { display: block; font-weight: 650; margin: 16px 0 6px; }
-    input { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid #cfd4dc; border-radius: 10px; font-size: 15px; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-    button { margin-top: 22px; padding: 12px 18px; border: 0; border-radius: 10px; font-weight: 700; cursor: pointer; background: #1a73e8; color: white; }
-    .hint { color: #5f6368; font-size: 14px; line-height: 1.45; }
-    .error { color: #b00020; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 14px; }
-    th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; vertical-align: top; }
-    th { background: #f3f4f6; }
-    .ok { color: #0b8043; font-weight: 700; }
-    .bad { color: #b00020; font-weight: 700; }
-    .download { display:inline-block; margin-top:18px; padding:10px 14px; background:#0b8043; color:white; border-radius:10px; text-decoration:none; font-weight:700; }
-    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
-  </style>
+  <title>Reportabilidad 5400 | Importador de Calendarios</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Importador de calendarios por Excel</h1>
-      <p class="hint">
-        El Excel debe tener las columnas <strong>RUT</strong> y <strong>CALENDARIO</strong>.
-        La URL base debe ser accesible desde Render; un host local como <code>http://hoteleria_vca:8100</code> solo funciona dentro de tu red local.
-      </p>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand-left">
+        <img src="{{ url_for('static', filename='img/aramark-logo.png') }}" alt="Aramark">
+      </div>
+      <div class="app-title">☑ Reportabilidad 5400</div>
+      <div class="brand-right">
+        <img src="{{ url_for('static', filename='img/escondida-bhp.png') }}" alt="Escondida | BHP">
+      </div>
+    </div>
+    <nav class="navbar" aria-label="secciones">
+      <span class="nav-pill">◔ Dashboard</span>
+      <span class="nav-pill">⇪ Importar</span>
+      <span class="nav-pill">☑ Censos</span>
+      <span class="nav-pill">✳ Sin match</span>
+      <span class="nav-pill">⤴ Curva</span>
+      <span class="nav-pill">⊕ Nuevo ID</span>
+      <span class="nav-pill">▦ Dotación</span>
+      <span class="nav-pill">▥ Ocupabilidad</span>
+      <span class="nav-pill">⌗ EGP</span>
+      <span class="nav-pill">☐ F&amp;A</span>
+    </nav>
+  </header>
 
+  <main class="page">
+    <section class="panel hero">
+      <div>
+        <div class="hero-eyebrow">Reporte operativo</div>
+        <h1>Importador de calendarios por Excel</h1>
+        <p>Automatiza la actualización de usuarios y calendarios en lote con la estética de Reportabilidad 5400.</p>
+      </div>
+      <div class="hero-actions">
+        {% if job_id %}
+          <a class="action-btn primary" href="{{ url_for('download_result', job_id=job_id) }}">⬇ Descargar resultado</a>
+        {% endif %}
+        <a class="action-btn secondary" href="#formulario">Cargar archivo Excel</a>
+      </div>
+    </section>
+
+    <section class="panel form-panel" id="formulario">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, message in messages %}
-            <p class="{{ category }}">{{ message }}</p>
+            <div class="notice {{ category }}">{{ message }}</div>
           {% endfor %}
         {% endif %}
       {% endwith %}
-
       <form action="/run" method="post" enctype="multipart/form-data">
-        {% if app_password_required %}
-        <label>Clave de esta aplicación</label>
-        <input type="password" name="app_password" autocomplete="current-password" required>
-        {% endif %}
-
-        <label>URL base del sistema hotelero</label>
-        <input name="target_base_url" value="{{ default_target_base_url }}" placeholder="https://tu-sistema.com" required>
-
-        <div class="grid">
-          <div>
-            <label>Usuario del sistema hotelero</label>
-            <input name="system_user" placeholder="LUIS CANIZALEZ" required>
+        <div class="form-grid">
+          {% if app_password_required %}
+          <div class="field">
+            <label>Clave de la aplicación</label>
+            <input type="password" name="app_password" autocomplete="current-password" required>
           </div>
-          <div>
-            <label>Contraseña del sistema hotelero</label>
+          {% endif %}
+
+          <div class="field {% if not app_password_required %}file-field{% endif %}">
+            <label>URL base del sistema</label>
+            <input type="url" name="target_base_url" value="{{ default_target_base_url }}" placeholder="https://tu-sistema.com" required>
+            <span class="file-help">Debe ser accesible desde Render.com. Una URL local como <code>http://hoteleria_vca:8100</code> no funciona en la nube.</span>
+          </div>
+
+          <div class="field">
+            <label>Usuario del sistema</label>
+            <input type="text" name="system_user" placeholder="LUIS CANIZALEZ" required>
+          </div>
+
+          <div class="field">
+            <label>Contraseña del sistema</label>
             <input type="password" name="system_password" required>
           </div>
+
+          <div class="field file-field">
+            <label>Archivo Excel</label>
+            <input type="file" name="excel_file" accept=".xlsx" required>
+            <span class="file-help">Formato .xlsx. Columnas obligatorias: <strong>RUT</strong> y <strong>CALENDARIO</strong>.</span>
+          </div>
+
+          <div class="submit-wrap">
+            <button class="submit-btn" type="submit">⟳ Ejecutar importación</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="metrics">
+      <article class="metric red">
+        <div class="metric-label">Proceso</div>
+        <div class="metric-value">Excel</div>
+        <div class="metric-sub">Carga masiva de usuarios y calendarios</div>
+      </article>
+      <article class="metric blue">
+        <div class="metric-label">Columnas</div>
+        <div class="metric-value">2</div>
+        <div class="metric-sub">RUT y CALENDARIO</div>
+      </article>
+      <article class="metric orange">
+        <div class="metric-label">Motor</div>
+        <div class="metric-value">Playwright</div>
+        <div class="metric-sub">Automatización compatible con Render</div>
+      </article>
+      <article class="metric green">
+        <div class="metric-label">Salida</div>
+        <div class="metric-value">XLSX</div>
+        <div class="metric-sub">Resultado descargable por ejecución</div>
+      </article>
+    </section>
+
+    <section class="content-grid">
+      <article class="card">
+        <h2>Conclusiones automáticas</h2>
+        <ul class="list-plain">
+          <li>Esta interfaz mantiene una identidad visual inspirada en el panel que compartiste.</li>
+          <li>El archivo debe incluir exactamente las columnas <code>RUT</code> y <code>CALENDARIO</code>.</li>
+          <li>La aplicación inicia sesión, busca el usuario, ajusta el calendario y genera evidencia de cada fila procesada.</li>
+          <li>Si el sistema expira sesión, el flujo intenta reingresar automáticamente.</li>
+        </ul>
+        <p class="footer-note">Sugerencia: si quieres, en el siguiente paso también puedo adaptar el nombre del módulo, favicon, menú superior y textos internos a tu operación de Aramark / Escondida.</p>
+      </article>
+
+      <article class="card">
+        <div class="result-actions">
+          <div>
+            <h3>Resultado de la importación</h3>
+            <p>Revisa el estado de cada fila procesada y descarga el Excel consolidado.</p>
+          </div>
+          {% if job_id %}
+            <a class="download-btn" href="{{ url_for('download_result', job_id=job_id) }}">⬇ Descargar resultado Excel</a>
+          {% endif %}
         </div>
 
-        <label>Archivo Excel</label>
-        <input type="file" name="excel_file" accept=".xlsx,.xls" required>
-
-        <button type="submit">Ejecutar importación</button>
-      </form>
-
-      {% if results %}
-        <h2>Resultado</h2>
-        {% if job_id %}
-          <a class="download" href="/download/{{ job_id }}">Descargar resultado Excel</a>
+        {% if results %}
+        <div class="result-table-wrap">
+          <table class="result-table">
+            <thead>
+              <tr>
+                <th>Fila</th>
+                <th>RUT</th>
+                <th>Calendario</th>
+                <th>Estado</th>
+                <th>Mensaje</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for row in results %}
+              <tr>
+                <td>{{ row.get('Fila Excel', '') }}</td>
+                <td>{{ row.get('RUT', '') }}</td>
+                <td>{{ row.get('CALENDARIO', '') }}</td>
+                <td>
+                  {% if row.get('ESTADO') == 'OK' %}
+                    <span class="status-ok">{{ row.get('ESTADO', '') }}</span>
+                  {% else %}
+                    <span class="status-error">{{ row.get('ESTADO', '') }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ row.get('MENSAJE', '') }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+          <div class="notice info">Todavía no hay una ejecución. Sube tu Excel y presiona <strong>Ejecutar importación</strong>.</div>
         {% endif %}
-        <table>
-          <thead>
-            <tr>
-              <th>Fila</th>
-              <th>RUT</th>
-              <th>Calendario</th>
-              <th>Estado</th>
-              <th>Mensaje</th>
-            </tr>
-          </thead>
-          <tbody>
-          {% for row in results %}
-            <tr>
-              <td>{{ row.get('Fila Excel', '') }}</td>
-              <td>{{ row.get('RUT', '') }}</td>
-              <td>{{ row.get('CALENDARIO', '') }}</td>
-              <td class="{% if row.get('ESTADO') == 'OK' %}ok{% else %}bad{% endif %}">{{ row.get('ESTADO', '') }}</td>
-              <td>{{ row.get('MENSAJE', '') }}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      {% endif %}
-    </div>
-  </div>
+      </article>
+    </section>
+  </main>
 </body>
 </html>

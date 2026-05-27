@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: hoteleria-importador-calendarios
+    env: docker
+    dockerfilePath: ./Dockerfile
+    autoDeploy: false
+    envVars:
+      - key: APP_PASSWORD
+        sync: false
+      - key: TARGET_BASE_URL
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true

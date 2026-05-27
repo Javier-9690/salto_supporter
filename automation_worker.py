@@ -3,12 +3,81 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
-import pandas as pd
+from openpyxl import Workbook, load_workbook
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
 
 
 TIMEOUT = 20000
 
+
+# -----------------------------------------------------------------------------
+# Excel helpers - sin pandas para evitar fallas de compilación en Render/Python 3.14
+# -----------------------------------------------------------------------------
+
+def _cell_to_str(value) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def read_import_rows(excel_path: str) -> List[Dict]:
+    workbook = load_workbook(excel_path, data_only=True)
+    sheet = workbook.active
+
+    headers = []
+    for cell in sheet[1]:
+        headers.append(_cell_to_str(cell.value).upper())
+
+    required = ["RUT", "CALENDARIO"]
+    missing = [col for col in required if col not in headers]
+    if missing:
+        raise ValueError(f"Faltan columnas obligatorias: {', '.join(missing)}")
+
+    rut_idx = headers.index("RUT") + 1
+    calendario_idx = headers.index("CALENDARIO") + 1
+
+    rows: List[Dict] = []
+    for excel_row in range(2, sheet.max_row + 1):
+        rut = _cell_to_str(sheet.cell(row=excel_row, column=rut_idx).value)
+        calendario = _cell_to_str(sheet.cell(row=excel_row, column=calendario_idx).value)
+
+        if not rut or not calendario:
+            continue
+        if rut.lower() in {"nan", "none"} or calendario.lower() in {"nan", "none"}:
+            continue
+
+        rows.append({"Fila Excel": excel_row, "RUT": rut, "CALENDARIO": calendario})
+
+    if not rows:
+        raise ValueError("El Excel no tiene filas válidas con RUT y CALENDARIO.")
+
+    return rows
+
+
+def write_results(output_path: str, resultados: List[Dict]) -> None:
+    headers = ["Fila Excel", "RUT", "CALENDARIO", "ESTADO", "MENSAJE", "FECHA_HORA"]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Resultado"
+    sheet.append(headers)
+
+    for row in resultados:
+        sheet.append([row.get(header, "") for header in headers])
+
+    for col in sheet.columns:
+        max_len = 0
+        column = col[0].column_letter
+        for cell in col:
+            value = "" if cell.value is None else str(cell.value)
+            max_len = max(max_len, len(value))
+        sheet.column_dimensions[column].width = min(max(max_len + 2, 12), 70)
+
+    workbook.save(output_path)
+
+
+# -----------------------------------------------------------------------------
+# Utilidades generales
+# -----------------------------------------------------------------------------
 
 def normalizar_rut(valor) -> str:
     return re.sub(r"[^0-9Kk]", "", str(valor)).upper()
@@ -26,26 +95,6 @@ def screenshot(page, job_dir: str, name: str, rut: str = "") -> None:
         page.screenshot(path=str(path), full_page=True)
     except Exception:
         pass
-
-
-def validar_excel(df: pd.DataFrame) -> pd.DataFrame:
-    required = ["RUT", "CALENDARIO"]
-    for col in required:
-        if col not in df.columns:
-            raise ValueError(f"Falta la columna obligatoria: {col}")
-
-    df = df.copy()
-    df["RUT"] = df["RUT"].astype(str).str.strip()
-    df["CALENDARIO"] = df["CALENDARIO"].astype(str).str.strip()
-
-    df = df[(df["RUT"] != "") & (df["CALENDARIO"] != "")]
-    df = df[~df["RUT"].str.lower().isin(["nan", "none"])]
-    df = df[~df["CALENDARIO"].str.lower().isin(["nan", "none"])]
-
-    if df.empty:
-        raise ValueError("El Excel no tiene filas válidas con RUT y CALENDARIO.")
-
-    return df
 
 
 def aceptar_cookies_si_aparece(page):
@@ -69,6 +118,10 @@ def esta_en_login(page) -> bool:
     except Exception:
         return False
 
+
+# -----------------------------------------------------------------------------
+# Login y navegación
+# -----------------------------------------------------------------------------
 
 def login(page, base_url: str, username: str, password: str, job_dir: str):
     page.goto(f"{base_url}/login", wait_until="domcontentloaded")
@@ -124,6 +177,10 @@ def ir_a_usuarios(page, base_url: str, username: str, password: str, job_dir: st
     page.locator("text=EXT. ID").first.wait_for(timeout=TIMEOUT)
     page.wait_for_timeout(1000)
 
+
+# -----------------------------------------------------------------------------
+# Búsqueda de usuario por EXT. ID / RUT
+# -----------------------------------------------------------------------------
 
 def obtener_bbox_ext_id(page) -> Dict[str, float]:
     try:
@@ -325,7 +382,8 @@ def obtener_info_fila_por_rut(page, rut: str):
 
 def seleccionar_checkbox_de_la_misma_fila(page, info_fila):
     y_fila = info_fila["rowBox"]["y"] + info_fila["rowBox"]["height"] / 2
-    page.mouse.click(50, y_fila)
+    x_checkbox = 50
+    page.mouse.click(x_checkbox, y_fila)
     page.wait_for_timeout(800)
 
 
@@ -358,8 +416,9 @@ def detalle_usuario_visible(page) -> bool:
 
 
 def esperar_detalle_usuario(page, timeout_ms=15000) -> bool:
-    limite = datetime.now().timestamp() + timeout_ms / 1000
-    while datetime.now().timestamp() < limite:
+    import time
+    limite = time.time() + timeout_ms / 1000
+    while time.time() < limite:
         if detalle_usuario_visible(page):
             return True
         page.wait_for_timeout(500)
@@ -410,6 +469,10 @@ def abrir_usuario_con_relogin_si_es_necesario(page, base_url: str, username: str
         seleccionar_checkbox_de_la_misma_fila(page, info_fila)
         abrir_usuario_para_opciones(page, info_fila, rut, job_dir)
 
+
+# -----------------------------------------------------------------------------
+# Select2 Calendario y guardado
+# -----------------------------------------------------------------------------
 
 def seleccionar_calendario_select2(page, calendario: str, job_dir: str, rut: str):
     try:
@@ -544,9 +607,9 @@ def procesar_usuario(page, base_url: str, username: str, password: str, rut: str
     guardar_cambios(page, job_dir, rut)
 
 
-def guardar_resultados(resultados: List[Dict], output_path: str):
-    pd.DataFrame(resultados).to_excel(output_path, index=False)
-
+# -----------------------------------------------------------------------------
+# Job principal
+# -----------------------------------------------------------------------------
 
 def run_import_job(
     excel_path: str,
@@ -557,9 +620,7 @@ def run_import_job(
     job_dir: str,
 ) -> List[Dict]:
     base_url = base_url.rstrip("/")
-    df = pd.read_excel(excel_path)
-    df = validar_excel(df)
-
+    rows = read_import_rows(excel_path)
     resultados: List[Dict] = []
 
     with sync_playwright() as p:
@@ -573,15 +634,16 @@ def run_import_job(
         try:
             login(page, base_url, username, password, job_dir)
 
-            for index, fila in df.iterrows():
-                rut = str(fila["RUT"]).strip()
-                calendario = str(fila["CALENDARIO"]).strip()
+            for row in rows:
+                rut = row["RUT"]
+                calendario = row["CALENDARIO"]
+                fila_excel = row["Fila Excel"]
 
                 try:
                     procesar_usuario(page, base_url, username, password, rut, calendario, job_dir)
                     resultados.append(
                         {
-                            "Fila Excel": index + 2,
+                            "Fila Excel": fila_excel,
                             "RUT": rut,
                             "CALENDARIO": calendario,
                             "ESTADO": "OK",
@@ -594,7 +656,7 @@ def run_import_job(
                     screenshot(page, job_dir, "error", rut)
                     resultados.append(
                         {
-                            "Fila Excel": index + 2,
+                            "Fila Excel": fila_excel,
                             "RUT": rut,
                             "CALENDARIO": calendario,
                             "ESTADO": "ERROR",
@@ -607,11 +669,11 @@ def run_import_job(
                     except Exception:
                         pass
 
-                guardar_resultados(resultados, output_path)
+                write_results(output_path, resultados)
 
         finally:
             context.close()
             browser.close()
 
-    guardar_resultados(resultados, output_path)
+    write_results(output_path, resultados)
     return resultados

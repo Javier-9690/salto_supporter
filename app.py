@@ -2,24 +2,22 @@ import os
 import uuid
 from pathlib import Path
 
-import pandas as pd
 from flask import Flask, render_template, request, send_file, abort, flash, redirect, url_for
 from werkzeug.utils import secure_filename
 
-from automation_worker import run_import_job
+from automation_worker import run_import_job, read_import_rows, write_results
 
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "cambia-esta-clave-local")
 
-BASE_DIR = Path(__file__).resolve().parent
 JOBS_DIR = Path(os.getenv("JOBS_DIR", "/tmp/hoteleria_jobs"))
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 
 APP_PASSWORD = os.getenv("APP_PASSWORD", "")
 DEFAULT_TARGET_BASE_URL = os.getenv("TARGET_BASE_URL", "http://hoteleria_vca:8100")
 
-ALLOWED_EXTENSIONS = {"xlsx", "xls"}
+ALLOWED_EXTENSIONS = {"xlsx"}
 
 
 def allowed_file(filename: str) -> bool:
@@ -64,7 +62,7 @@ def run_job():
         return redirect(url_for("index"))
 
     if not allowed_file(uploaded.filename):
-        flash("El archivo debe ser .xlsx o .xls.", "error")
+        flash("El archivo debe ser .xlsx.", "error")
         return redirect(url_for("index"))
 
     job_id = uuid.uuid4().hex
@@ -79,11 +77,9 @@ def run_job():
 
     try:
         # Validación rápida para dar error temprano si faltan columnas.
-        df = pd.read_excel(input_path)
-        required = {"RUT", "CALENDARIO"}
-        missing = required.difference(set(df.columns))
-        if missing:
-            raise ValueError(f"Faltan columnas obligatorias: {', '.join(sorted(missing))}")
+        rows = read_import_rows(str(input_path))
+        if not rows:
+            raise ValueError("El Excel no tiene filas válidas con RUT y CALENDARIO.")
 
         results = run_import_job(
             excel_path=str(input_path),
@@ -95,16 +91,15 @@ def run_job():
         )
 
     except Exception as exc:
-        # Resultado con error general para que el usuario pueda descargar evidencia.
-        pd.DataFrame([
+        results = [
             {
                 "ESTADO": "ERROR",
                 "MENSAJE": str(exc),
                 "RUT": "",
                 "CALENDARIO": "",
             }
-        ]).to_excel(output_path, index=False)
-        results = [{"ESTADO": "ERROR", "MENSAJE": str(exc), "RUT": "", "CALENDARIO": ""}]
+        ]
+        write_results(str(output_path), results)
 
     return render_template(
         "index.html",
