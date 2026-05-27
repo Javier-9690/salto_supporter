@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Importador de Calendarios</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 0; background: #f5f6f8; color: #202124; }
+    .wrap { max-width: 980px; margin: 40px auto; padding: 0 18px; }
+    .card { background: white; border-radius: 14px; padding: 24px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    h1 { margin-top: 0; font-size: 28px; }
+    label { display: block; font-weight: 650; margin: 16px 0 6px; }
+    input { width: 100%; box-sizing: border-box; padding: 11px 12px; border: 1px solid #cfd4dc; border-radius: 10px; font-size: 15px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    button { margin-top: 22px; padding: 12px 18px; border: 0; border-radius: 10px; font-weight: 700; cursor: pointer; background: #1a73e8; color: white; }
+    .hint { color: #5f6368; font-size: 14px; line-height: 1.45; }
+    .error { color: #b00020; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; font-size: 14px; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 10px; text-align: left; vertical-align: top; }
+    th { background: #f3f4f6; }
+    .ok { color: #0b8043; font-weight: 700; }
+    .bad { color: #b00020; font-weight: 700; }
+    .download { display:inline-block; margin-top:18px; padding:10px 14px; background:#0b8043; color:white; border-radius:10px; text-decoration:none; font-weight:700; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Importador de calendarios por Excel</h1>
+      <p class="hint">
+        El Excel debe tener las columnas <strong>RUT</strong> y <strong>CALENDARIO</strong>.
+        La URL base debe ser accesible desde Render; un host local como <code>http://hoteleria_vca:8100</code> solo funciona dentro de tu red local.
+      </p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <p class="{{ category }}">{{ message }}</p>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form action="/run" method="post" enctype="multipart/form-data">
+        {% if app_password_required %}
+        <label>Clave de esta aplicación</label>
+        <input type="password" name="app_password" autocomplete="current-password" required>
+        {% endif %}
+
+        <label>URL base del sistema hotelero</label>
+        <input name="target_base_url" value="{{ default_target_base_url }}" placeholder="https://tu-sistema.com" required>
+
+        <div class="grid">
+          <div>
+            <label>Usuario del sistema hotelero</label>
+            <input name="system_user" placeholder="LUIS CANIZALEZ" required>
+          </div>
+          <div>
+            <label>Contraseña del sistema hotelero</label>
+            <input type="password" name="system_password" required>
+          </div>
+        </div>
+
+        <label>Archivo Excel</label>
+        <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+
+        <button type="submit">Ejecutar importación</button>
+      </form>
+
+      {% if results %}
+        <h2>Resultado</h2>
+        {% if job_id %}
+          <a class="download" href="/download/{{ job_id }}">Descargar resultado Excel</a>
+        {% endif %}
+        <table>
+          <thead>
+            <tr>
+              <th>Fila</th>
+              <th>RUT</th>
+              <th>Calendario</th>
+              <th>Estado</th>
+              <th>Mensaje</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in results %}
+            <tr>
+              <td>{{ row.get('Fila Excel', '') }}</td>
+              <td>{{ row.get('RUT', '') }}</td>
+              <td>{{ row.get('CALENDARIO', '') }}</td>
+              <td class="{% if row.get('ESTADO') == 'OK' %}ok{% else %}bad{% endif %}">{{ row.get('ESTADO', '') }}</td>
+              <td>{{ row.get('MENSAJE', '') }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>
